@@ -1,0 +1,31 @@
+schema_version = "1.0.0"
+
+id = "unware"
+version = "2.4.0"
+name = "unware tool"
+tagline = "Blender Add-on to fuck br"
+maintainer = "psychobye"
+type = "add-on"
+
+website = "https://github.com/psychobye/unware-tools"
+
+# # Optional: tag list defined by Blender and server, see:
+# # https://docs.blender.org/manual/en/dev/advanced/extensions/tags.html
+tags = ["Import-Export", "3D View", "Mesh", "Material"]
+
+blender_version_min = "4.2.0"
+# blender_version_max = "5.1.0"
+
+# License conforming to https://spdx.org/licenses/ (use "SPDX: prefix)
+# https://docs.blender.org/manual/en/dev/advanced/extensions/licenses.html
+license = [
+  "SPDX:GPL-3.0-or-later"
+]
+
+copyright = [
+    "2019-2025 psychobye",
+    "2007-2012 Python File Format Interface"
+]
+
+[permissions]
+files = "Import/export FBX/DFF/TXD/COL/IPL/IDE from/to disk"
