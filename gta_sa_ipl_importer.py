@@ -1,7 +1,7 @@
 import bpy
 import os
 import bmesh
-from mathutils import Quaternion
+from mathutils import Quaternion # need to check
 from .dff import dff
 
 material_cache = {}
@@ -145,7 +145,7 @@ def place_objects(objs, dff_folder):
             inst = import_dff(o['model'], dff_folder)
             if not inst: continue
 
-            # IDK MAYBE ITS NOW WORK, BUT ok :(
+            # IDK MAYBE ITS NOT WORK, BUT ok :(
             # 1. convert pos: (X-gta, Y-gta, Z-gta) -> (X-blend, Y-blend, Z-blend)
             xg, yg, zg = o['pos']
             inst.location = ( xg, -zg, yg )
