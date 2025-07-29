@@ -1,6 +1,7 @@
 import bpy
 import os
 import bmesh
+from mathutils import Quaternion
 from .dff import dff
 
 material_cache = {}
@@ -143,14 +144,27 @@ def place_objects(objs, dff_folder):
         for o in objs:
             inst = import_dff(o['model'], dff_folder)
             if not inst: continue
-            inst.location = o['pos']
+
+            # IDK MAYBE ITS NOW WORK, BUT ok :(
+            # 1. convert pos: (X-gta, Y-gta, Z-gta) -> (X-blend, Y-blend, Z-blend)
+            xg, yg, zg = o['pos']
+            inst.location = ( xg, -zg, yg )
+
+            # 2. quaternion from GTA (w, x, y, z)
+            w, x, y, z = o['rot']
+            q = Quaternion((w, x, y, z))
+
+            # 3. replace components: 
+            # from q = (w, x, y, z) -> q2 = (w,  x,  z, -y)
+            q2 = Quaternion((q.w, q.x, q.z, -q.y))
             inst.rotation_mode = 'QUATERNION'
-            inst.rotation_quaternion = o['rot']
+            inst.rotation_quaternion = q2
+
             inst['id'] = int(o['id']) if o['id'].isdigit() else -1
             inst['interior'] = int(o['interior']) if o['interior'].isdigit() else -1
             try:
                 inst['lod'] = int(o['lod'])
-            except Exception:
+            except:
                 inst['lod'] = -1
             bpy.context.collection.objects.link(inst)
     finally:
