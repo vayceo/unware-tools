@@ -49,6 +49,11 @@ class autoscan_props(bpy.types.PropertyGroup):
         items=[('FBX','fbx',''),('DFF','dff','')],
         default='FBX'
     )
+    optimize: bpy.props.BoolProperty(
+        name="optimize",
+        description="clear scene before import (recommended)",
+        default=True
+    )
     def update_list(self):
         self.ipl_items.clear()
         if os.path.isdir(self.root_path):
@@ -64,9 +69,11 @@ class import_autoscan_ipl_operator(bpy.types.Operator):
     bl_idname = "import.autoscan_ipl"
     bl_label = "import ipl"
     def execute(self, context):
-        bpy.ops.object.select_all(action='SELECT')
-        bpy.ops.object.delete()
         props = context.scene.autoscan_props
+        if props.optimize:
+            bpy.ops.object.select_all(action='SELECT')
+            bpy.ops.object.delete()
+
         ipl_path = props.ipl_enum
         if not os.path.exists(ipl_path):
             self.report({'ERROR'}, "ipl file not found")
@@ -92,29 +99,42 @@ class export_zip_operator(bpy.types.Operator):
     bl_idname = "export.textures_and_model_zip"
     bl_label = "export zip"
     filepath: bpy.props.StringProperty(subtype="FILE_PATH")
+
     def execute(self, context):
         props = context.scene.autoscan_props
         sel = context.selected_objects
         if not sel:
             self.report({'ERROR'}, "no selected objects")
             return {'CANCELLED'}
+
         tmp = tempfile.mkdtemp()
         files = []
+
         for obj in sel:
+            if not obj.material_slots:
+                continue
             for slot in obj.material_slots:
                 mat = slot.material
-                if mat and mat.node_tree:
-                    for node in mat.node_tree.nodes:
-                        if node.type == 'TEX_IMAGE' and node.image and node.image.has_data:
-                            name = safe_name(os.path.splitext(node.image.name)[0])
-                            path = os.path.join(tmp, f"{name}.png")
+                if not mat or not mat.node_tree:
+                    continue
+                for node in mat.node_tree.nodes:
+                    if node.type == 'TEX_IMAGE' and node.image:
+                        if node.image.packed_file:
+                            node.image.unpack(method='USE_ORIGINAL')
+                        name = safe_name(os.path.splitext(node.image.name)[0])
+                        path = os.path.join(tmp, f"{name}.png")
+                        try:
+                            node.image.save_render(path)
+                        except:
                             node.image.filepath_raw = path
                             node.image.file_format = 'PNG'
                             node.image.save()
-                            files.append(path)
+                        files.append(path)
+
         fmt = props.export_format.lower()
         name = safe_name(sel[0].name)
         model_path = os.path.join(tmp, f"{name}.{fmt}")
+
         if fmt == 'fbx':
             bpy.ops.export_scene.fbx(
                 filepath=model_path,
@@ -132,14 +152,18 @@ class export_zip_operator(bpy.types.Operator):
                 preserve_rotations=props.preserve_transforms
             )
         files.append(model_path)
+
         out = self.filepath or os.path.join(os.path.expanduser("~"), "Desktop", f"{name}.zip")
         if not out.lower().endswith('.zip'):
             out += '.zip'
+
         with zipfile.ZipFile(out, 'w') as z:
             for f in files:
                 z.write(f, os.path.basename(f))
+
         self.report({'INFO'}, f"exported to {out}")
         return {'FINISHED'}
+
     def invoke(self, context, event):
         desktop = os.path.join(os.path.expanduser("~"), "Desktop")
         name = safe_name(context.selected_objects[0].name) if context.selected_objects else "export"
@@ -147,10 +171,10 @@ class export_zip_operator(bpy.types.Operator):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
-# ---------- DFF cleaner ----------
-class DFF_OT_clean_model(bpy.types.Operator):
-    bl_idname = "dff.clean_model"
-    bl_label = "clean DFF"
+# ---------- car cleaner ----------
+class CAR_OT_clean_model(bpy.types.Operator):
+    bl_idname = "car.clean_model"
+    bl_label = "clean car"
     bl_description = "delete cols, lods, dummies and more"
     def execute(self, context):
         logs = []
@@ -216,6 +240,7 @@ class unware_tools_panel(bpy.types.Panel):
         box.prop(props, "root_path")
         if props.ipl_enum:
             box.prop(props, "ipl_enum", text="ipl")
+            box.prop(props, "optimize", text="optimize")
             box.operator("import.autoscan_ipl")
         else:
             box.label(text="no ipl files found")
@@ -224,17 +249,17 @@ class unware_tools_panel(bpy.types.Panel):
         box.prop(props, "preserve_transforms", text="preserve transforms")
         box.prop(props, "export_format", text="format")
         box.operator("export.textures_and_model_zip")
-        # DFF cleaner
+        # car cleaner
         box = layout.box()
-        box.label(text="DFF cleaner", icon='MODIFIER')
-        box.operator("dff.clean_model", text="clean DFF")
+        box.label(text="car cleaner", icon='MODIFIER')
+        box.operator("car.clean_model", text="clean car")
 
 classes = [
     autoscan_ipl_item,
     autoscan_props,
     import_autoscan_ipl_operator,
     export_zip_operator,
-    DFF_OT_clean_model,
+    CAR_OT_clean_model,
     unware_tools_panel,
 ]
 
