@@ -1,26 +1,26 @@
-# unware tools
+# UNWARE TOOLS
 
-a blender add-on for importing gta sa maps, exporting models, and cleaning dff files for use in unity or other engines.
+a blender add-on for work with gtasa files.
 
 install it like any normal blender addon — no setup required.
 
 ---
 
-## features
+## FEATURES
 
-### 🗺️ map importer
+### MAP IMPORTER
 - scans folders for `.ipl` map files
 - auto-finds the related `.dff` models
 - places all objects into the scene, ready to go
 - optional: keeps original world positions/rotations
 
-### 📦 export system
+### EXPORT SYSTEM
 - exports selected objects and all used textures to a `.zip`
 - supports `.fbx` and `.dff` formats
 - textures auto-converted to `.png`
 - simple one-click export
 
-### 🧹 dff cleaner
+### CAR CLEANER
 - removes:
   - collision meshes (`colmesh`, `colsphere`)
   - LODs
@@ -29,9 +29,12 @@ install it like any normal blender addon — no setup required.
 - regenerates wheels from placeholders (e.g. `wheel_rf` → real mesh)
 - keeps scale/rotation/position clean
 
+### SNAPSHOOTS
+- fast object renders
+
 ---
 
-## how to use
+## HOW TO USE
 
 1. open blender and go to `preferences > addons`
 2. install this script or drop it into your `scripts/addons` folder
@@ -42,7 +45,7 @@ install it like any normal blender addon — no setup required.
 
 ---
 
-## 📦 asset rules
+## ASSET RULES
 
 - `.dff` models must be in a folder under your root path
 - all textures **must be placed next to the corresponding `.dff`** (same folder)
@@ -65,7 +68,6 @@ root/
 
 - tested on blender 4.4+
 - works with gta sa mod assets
-- exports clean meshes for unity/unreal
 
 ---
 
