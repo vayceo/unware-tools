@@ -4,6 +4,7 @@ import zipfile
 import tempfile
 import re
 from .gta_sa_ipl_importer import parse_ipl, place_objects
+from . import snapshoot as snapshoot_module
 
 def scan_ipl_files(root):
     files = []
@@ -33,6 +34,10 @@ class autoscan_props(bpy.types.PropertyGroup):
         name="root",
         subtype='DIR_PATH',
         update=lambda self, ctx: self.update_list()
+    )
+    dff_path: bpy.props.StringProperty(
+        name="dff folders",
+        subtype='DIR_PATH'
     )
     ipl_items: bpy.props.CollectionProperty(type=autoscan_ipl_item)
     ipl_enum: bpy.props.EnumProperty(
@@ -171,6 +176,101 @@ class export_zip_operator(bpy.types.Operator):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
+# ---------- snapshoot operator ----------
+# TODO: add more options like FOV and more
+class SNAP_OT_snapshoot(bpy.types.Operator):
+    bl_idname = "snapshoot.make_snapshoot"
+    bl_label = "snapshoot"
+    filepath: bpy.props.StringProperty(subtype='FILE_PATH')
+
+    def execute(self, context):
+        props = context.scene.autoscan_props
+
+        dff_folder = props.dff_path if props.dff_path and os.path.isdir(props.dff_path) else find_dff_folder(props.root_path)
+        if not dff_folder or not os.path.isdir(dff_folder):
+            self.report({'ERROR'}, "dff folder not found")
+            return {'CANCELLED'}
+
+        sel = (self.filepath or "").strip()
+        if not sel:
+            out = os.path.join(os.path.expanduser("~"), "Desktop")
+        else:
+            sel = os.path.expanduser(sel)
+            if os.path.isdir(sel):
+                out = sel
+            else:
+                out = os.path.dirname(sel) or os.path.join(os.path.expanduser("~"), "Desktop")
+
+        try:
+            os.makedirs(out, exist_ok=True)
+        except Exception as e:
+            self.report({'ERROR'}, f"cant create out folder: {e}")
+            return {'CANCELLED'}
+
+        files = [f for f in os.listdir(dff_folder) if f.lower().endswith('.dff')]
+        total = len(files)
+        if total == 0:
+            msg = f"no dff files in {dff_folder}"
+            self.report({'ERROR'}, msg)
+            return {'CANCELLED'}
+
+        wm = context.window_manager
+        try:
+            wm.progress_begin(0, total)
+        except:
+            pass
+
+        def report_cb(level, msg):
+            self.report({level}, msg)
+
+        report_cb('INFO', f"start snapshoot: dff_folder={dff_folder}, out={out}, count={total}")
+
+        try:
+            summary = snapshoot_module.snapshoot(dff_folder, out, report=report_cb)
+        except Exception as e:
+            report_cb('ERROR', f"snapshoot crashed: {e}")
+            try:
+                wm.progress_end()
+            except:
+                pass
+            return {'CANCELLED'}
+
+        processed = summary.get('processed', 0)
+        errors = summary.get('errors', [])
+        outs = summary.get('outs', [])
+
+        missing = []
+        for p in outs:
+            if not os.path.exists(p):
+                missing.append(p)
+                msg = f"file not found after render: {p}"
+                report_cb('ERROR', msg)
+
+        try:
+            for i in range(processed):
+                wm.progress_update(i+1)
+        except:
+            pass
+        try:
+            wm.progress_end()
+        except:
+            pass
+
+        report_cb('INFO', f"done. processed={processed}, errors={len(errors)}, missing_files={len(missing)}")
+        if errors:
+            for e in errors:
+                report_cb('ERROR', e)
+        if missing:
+            report_cb('ERROR', "some renders reported saved but files missing. check antivirus or permissions")
+
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+        self.filepath = desktop
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
 # ---------- car cleaner ----------
 class CAR_OT_clean_model(bpy.types.Operator):
     bl_idname = "car.clean_model"
@@ -235,6 +335,7 @@ class unware_tools_panel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         props = context.scene.autoscan_props
+
         box = layout.box()
         box.label(text="map import", icon='IMPORT')
         box.prop(props, "root_path")
@@ -244,21 +345,28 @@ class unware_tools_panel(bpy.types.Panel):
             box.operator("import.autoscan_ipl")
         else:
             box.label(text="no ipl files found")
+
         box = layout.box()
         box.label(text="export", icon='EXPORT')
         box.prop(props, "preserve_transforms", text="preserve transforms")
         box.prop(props, "export_format", text="format")
         box.operator("export.textures_and_model_zip")
-        # car cleaner
+
         box = layout.box()
         box.label(text="car cleaner", icon='MODIFIER')
         box.operator("car.clean_model", text="clean car")
+
+        box = layout.box()
+        box.label(text="snapshoot", icon='RENDER_STILL')
+        box.prop(props, "dff_path", text="dff")
+        box.operator("snapshoot.make_snapshoot", text="snapshoot")
 
 classes = [
     autoscan_ipl_item,
     autoscan_props,
     import_autoscan_ipl_operator,
     export_zip_operator,
+    SNAP_OT_snapshoot,
     CAR_OT_clean_model,
     unware_tools_panel,
 ]
