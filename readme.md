@@ -64,13 +64,13 @@ root/
 
 ---
 
-## compatibility
+## COMPATIBILITY
 
 - tested on blender 4.4+
 - works with gta sa mod assets
 
 ---
 
-## license
+## LICENSE
 
 no license yet, use at your own risk.
