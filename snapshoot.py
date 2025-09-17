@@ -3,17 +3,33 @@ import os
 import math
 from mathutils import Vector
 
-def clear_scene():
-    bpy.ops.object.select_all(action='SELECT')
-    bpy.ops.object.delete()
-    for data_iter in (bpy.data.meshes, bpy.data.materials, bpy.data.armatures, bpy.data.cameras, bpy.data.lights):
+def clear_scene(keep_cam_and_lights=False):
+    objs = list(bpy.data.objects)
+    for o in objs:
+        if keep_cam_and_lights and o.type in ('CAMERA', 'LIGHT'):
+            continue
+        try:
+            bpy.data.objects.remove(o, do_unlink=True)
+        except:
+            pass
+
+    if keep_cam_and_lights:
+        data_iters = (bpy.data.meshes, bpy.data.materials, bpy.data.armatures)
+    else:
+        data_iters = (bpy.data.meshes, bpy.data.materials, bpy.data.armatures, bpy.data.cameras, bpy.data.lights)
+
+    for data_iter in data_iters:
         for d in list(data_iter):
             try:
                 data_iter.remove(d)
             except:
                 pass
+
     for col in list(bpy.data.collections):
         try:
+            if keep_cam_and_lights:
+                if any(o.type in ('CAMERA','LIGHT') for o in col.objects):
+                    continue
             bpy.data.collections.remove(col)
         except:
             pass
@@ -72,15 +88,22 @@ def get_bbox():
     min_v = Vector((float('inf'),)*3)
     max_v = Vector((float('-inf'),)*3)
     bpy.context.view_layer.update()
+    any_mesh = False
     for o in bpy.context.scene.objects:
         if o.type == 'MESH' and o.visible_get():
+            any_mesh = True
             for corner in o.bound_box:
                 w = o.matrix_world @ Vector(corner)
-                min_v = Vector(map(min, min_v, w))
-                max_v = Vector(map(max, max_v, w))
+                min_v.x = min(min_v.x, w.x)
+                min_v.y = min(min_v.y, w.y)
+                min_v.z = min(min_v.z, w.z)
+                max_v.x = max(max_v.x, w.x)
+                max_v.y = max(max_v.y, w.y)
+                max_v.z = max(max_v.z, w.z)
+    if not any_mesh:
+        raise RuntimeError("no visible mesh for bbox")
     return min_v, max_v
 
-# TODO: add more options
 def position_cam_pretty(cam, light, min_v, max_v):
     center = (min_v + max_v) * 0.5
     ext = max_v - min_v
@@ -90,9 +113,12 @@ def position_cam_pretty(cam, light, min_v, max_v):
     elif hy > hx * 5:
         dir_vec = Vector((1, 0, 0))
     else:
-        w1 = hx / (hx + hy) if hx+hy else 0.5
-        w2 = hy / (hx + hy) if hx+hy else 0.5
+        denom = (hx + hy) if (hx + hy) else 1.0
+        w1 = hx / denom
+        w2 = hy / denom
         dir_vec = Vector((w1, w2, 0.3))
+        if dir_vec.length == 0:
+            dir_vec = Vector((0, 1, 0.3))
         dir_vec.normalize()
     diameter = ext.length
     dist = max(3.0, diameter * 2.5)
@@ -106,8 +132,8 @@ def render_model(path):
     bpy.context.scene.render.filepath = path
     bpy.ops.render.render(write_still=True)
 
-# TODO: type of models like a ped/car/obj
-def snapshoot(dff_folder: str, render_folder: str = None, report=None):
+# TODO: materials (glass, car color and more)
+def snapshoot(dff_folder: str, render_folder: str = None, report=None, mode: str = 'OBJECT', fov: float = None):
     def rpt(level, msg):
         if callable(report):
             try:
@@ -142,14 +168,16 @@ def snapshoot(dff_folder: str, render_folder: str = None, report=None):
     errors = []
     outs = []
 
-    rpt('INFO', f"found {total} dff files, starting rendering to {render_folder}")
+    rpt('INFO', f"found {total} dff files, starting rendering to {render_folder} (mode={mode})")
 
     for i, f in enumerate(files):
         rpt('INFO', f"processing {i+1}/{total}: {f}")
         try:
-            clear_scene()
-            cam = create_camera()
-            light = create_sun()
+            if mode == 'CAR':
+                clear_scene(keep_cam_and_lights=True)
+            else:
+                clear_scene(keep_cam_and_lights=False)
+
             try:
                 bpy.ops.import_scene.dff(filepath=os.path.join(dff_folder, f), read_mat_split=True)
             except Exception as e:
@@ -157,7 +185,16 @@ def snapshoot(dff_folder: str, render_folder: str = None, report=None):
                 rpt('ERROR', err)
                 errors.append(err)
                 continue
+
             move_objs_to_scene()
+
+            if mode == 'CAR':
+                try:
+                    bpy.ops.car.clean_model() # car cleaner
+                    rpt('INFO', f"car cleaned: {f}")
+                except Exception as e:
+                    rpt('ERROR', f"car cleaner failed: {e}")
+
             try:
                 min_v, max_v = get_bbox()
             except Exception as e:
@@ -165,10 +202,64 @@ def snapshoot(dff_folder: str, render_folder: str = None, report=None):
                 rpt('ERROR', err)
                 errors.append(err)
                 continue
-            try:
-                position_cam_pretty(cam, light, min_v, max_v)
-            except Exception as e:
-                rpt('ERROR', f"camera positioning error {f}: {e}")
+
+            center = (min_v + max_v) * 0.5
+            ext = (max_v - min_v)
+            diameter = ext.length
+            dist = max(3.0, diameter * 2.5)
+
+            cam = None
+            light = None
+            cam_created = False
+            light_created = False
+
+            if mode == 'CAR':
+                # cam pos
+                FRONT_FACTOR = 1.0
+                SIDE_FACTOR = 0.35
+                HEIGHT_FACTOR = 1.25
+
+                center += Vector((-0.2, 0.0, 0.0)) # center offset
+                forward = Vector((0, 1, 0))
+                side = Vector((1, 0, 0))
+
+                cam = create_camera()
+                if fov:
+                    try:
+                        cam.data.angle = math.radians(float(fov))
+                    except Exception:
+                        pass
+                cam_created = True
+
+                light = create_sun()
+                light_created = True
+
+                cam.location = center + forward * (dist * FRONT_FACTOR) + side * (dist * SIDE_FACTOR)
+                cam.location.z = center.z + max(0.5, ext.z * HEIGHT_FACTOR)
+                look_at(cam, center)
+
+                try:
+                    light.location = cam.location + (cam.matrix_world.to_quaternion() @ Vector((0, -1, 0))) * (diameter * 0.2 + 1.0)
+                except:
+                    light.location = cam.location + Vector((0, -1, 0)) * (diameter * 0.2 + 1.0)
+                look_at(light, center)
+
+            else:
+                cam = create_camera()
+                if fov:
+                    try:
+                        cam.data.angle = math.radians(float(fov))
+                    except Exception:
+                        pass
+                cam_created = True
+
+                light = create_sun()
+                light_created = True
+                try:
+                    position_cam_pretty(cam, light, min_v, max_v)
+                except Exception as e:
+                    rpt('ERROR', f"camera pretty positioning failed: {e}")
+
             out = os.path.join(render_folder, f + ".png")
             try:
                 render_model(out)
@@ -176,7 +267,23 @@ def snapshoot(dff_folder: str, render_folder: str = None, report=None):
                 err = f"render error {f}: {e}"
                 rpt('ERROR', err)
                 errors.append(err)
+                try:
+                    if cam_created and cam and cam.name in bpy.data.objects:
+                        bpy.data.objects.remove(cam, do_unlink=True)
+                    if light_created and light and light.name in bpy.data.objects:
+                        bpy.data.objects.remove(light, do_unlink=True)
+                except:
+                    pass
                 continue
+
+            try:
+                if cam_created and cam and cam.name in bpy.data.objects:
+                    bpy.data.objects.remove(cam, do_unlink=True)
+                if light_created and light and light.name in bpy.data.objects:
+                    bpy.data.objects.remove(light, do_unlink=True)
+            except Exception as e:
+                rpt('ERROR', f"failed to cleanup cam/light: {e}")
+
             processed += 1
             outs.append(out)
             rpt('INFO', f"render done: {f} -> {out}")

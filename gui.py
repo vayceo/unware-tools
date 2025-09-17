@@ -59,6 +59,18 @@ class autoscan_props(bpy.types.PropertyGroup):
         description="clear scene before import (recommended)",
         default=True
     )
+    snap_mode: bpy.props.EnumProperty(
+        name="snap mode",
+        items=[('OBJECT', 'OBJECT', 'auto camera'), ('CAR', 'CAR', 'static car camera')],
+        default='OBJECT'
+    )
+    snap_fov: bpy.props.FloatProperty(
+        name="snap FOV",
+        description="field of view in degrees for snapshot camera",
+        default=15.0,
+        min=1.0,
+        max=179.0
+    )
     def update_list(self):
         self.ipl_items.clear()
         if os.path.isdir(self.root_path):
@@ -177,7 +189,6 @@ class export_zip_operator(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
 # ---------- snapshoot operator ----------
-# TODO: add more options like FOV and more
 class SNAP_OT_snapshoot(bpy.types.Operator):
     bl_idname = "snapshoot.make_snapshoot"
     bl_label = "snapshoot"
@@ -226,7 +237,7 @@ class SNAP_OT_snapshoot(bpy.types.Operator):
         report_cb('INFO', f"start snapshoot: dff_folder={dff_folder}, out={out}, count={total}")
 
         try:
-            summary = snapshoot_module.snapshoot(dff_folder, out, report=report_cb)
+            summary = snapshoot_module.snapshoot(dff_folder, out, report=report_cb, mode=props.snap_mode, fov=props.snap_fov)
         except Exception as e:
             report_cb('ERROR', f"snapshoot crashed: {e}")
             try:
@@ -359,6 +370,8 @@ class unware_tools_panel(bpy.types.Panel):
         box = layout.box()
         box.label(text="snapshoot", icon='RENDER_STILL')
         box.prop(props, "dff_path", text="dff")
+        box.prop(props, "snap_mode", text="mode")
+        box.prop(props, "snap_fov", text="FOV")
         box.operator("snapshoot.make_snapshoot", text="snapshoot")
 
 classes = [
