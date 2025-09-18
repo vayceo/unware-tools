@@ -3,6 +3,8 @@ import os
 import math
 from mathutils import Vector
 
+from .material_helpers import apply_car_colors
+
 def clear_scene(keep_cam_and_lights=False):
     objs = list(bpy.data.objects)
     for o in objs:
@@ -132,8 +134,8 @@ def render_model(path):
     bpy.context.scene.render.filepath = path
     bpy.ops.render.render(write_still=True)
 
-# TODO: materials (glass, car color and more)
-def snapshoot(dff_folder: str, render_folder: str = None, report=None, mode: str = 'OBJECT', fov: float = None):
+def snapshoot(dff_folder: str, render_folder: str = None, report=None, mode: str = 'OBJECT', fov: float = None,
+             primary_color=None, secondary_color=None, emission_strength: float = 5.0):
     def rpt(level, msg):
         if callable(report):
             try:
@@ -192,6 +194,12 @@ def snapshoot(dff_folder: str, render_folder: str = None, report=None, mode: str
                 try:
                     bpy.ops.car.clean_model() # car cleaner
                     rpt('INFO', f"car cleaned: {f}")
+                    # apply colors
+                    try:
+                        apply_car_colors(primary_color=primary_color, secondary_color=secondary_color, emission_strength=emission_strength)
+                        rpt('INFO', f"applied car colors for {f}")
+                    except Exception as e:
+                        rpt('ERROR', f"apply_car_colors failed: {e}")
                 except Exception as e:
                     rpt('ERROR', f"car cleaner failed: {e}")
 

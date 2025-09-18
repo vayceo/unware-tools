@@ -62,7 +62,8 @@ class autoscan_props(bpy.types.PropertyGroup):
     snap_mode: bpy.props.EnumProperty(
         name="snap mode",
         items=[('OBJECT', 'OBJECT', 'auto camera'), ('CAR', 'CAR', 'static car camera')],
-        default='OBJECT'
+        default='OBJECT',
+        update=lambda self, ctx: None
     )
     snap_fov: bpy.props.FloatProperty(
         name="snap FOV",
@@ -70,6 +71,27 @@ class autoscan_props(bpy.types.PropertyGroup):
         default=15.0,
         min=1.0,
         max=179.0
+    )
+    snap_primary_color: bpy.props.FloatVectorProperty(
+        name="primary",
+        subtype='COLOR',
+        size=3,
+        min=0.0, max=1.0,
+        default=(0.1, 0.45, 0.9)
+    )
+    snap_secondary_color: bpy.props.FloatVectorProperty(
+        name="secondary",
+        subtype='COLOR',
+        size=3,
+        min=0.0, max=1.0,
+        default=(0.2, 0.2, 0.2)
+    )
+    snap_emission_strength: bpy.props.FloatProperty(
+        name="emission strength",
+        description="strength of the emission",
+        default=10.0,
+        min=0.0,
+        max=50.0
     )
     def update_list(self):
         self.ipl_items.clear()
@@ -237,7 +259,15 @@ class SNAP_OT_snapshoot(bpy.types.Operator):
         report_cb('INFO', f"start snapshoot: dff_folder={dff_folder}, out={out}, count={total}")
 
         try:
-            summary = snapshoot_module.snapshoot(dff_folder, out, report=report_cb, mode=props.snap_mode, fov=props.snap_fov)
+            summary = snapshoot_module.snapshoot(
+                dff_folder, out,
+                report=report_cb,
+                mode=props.snap_mode,
+                fov=props.snap_fov,
+                primary_color=tuple(props.snap_primary_color),
+                secondary_color=tuple(props.snap_secondary_color),
+                emission_strength=props.snap_emission_strength
+            )
         except Exception as e:
             report_cb('ERROR', f"snapshoot crashed: {e}")
             try:
@@ -372,6 +402,14 @@ class unware_tools_panel(bpy.types.Panel):
         box.prop(props, "dff_path", text="dff")
         box.prop(props, "snap_mode", text="mode")
         box.prop(props, "snap_fov", text="FOV")
+
+        if props.snap_mode == 'CAR':
+            col = box.column(align=True)
+            col.label(text="car colors / emission")
+            col.prop(props, "snap_primary_color", text="primary")
+            col.prop(props, "snap_secondary_color", text="secondary")
+            col.prop(props, "snap_emission_strength", text="emission strength")
+
         box.operator("snapshoot.make_snapshoot", text="snapshoot")
 
 classes = [
